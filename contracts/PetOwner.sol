@@ -2,17 +2,18 @@ pragma solidity ^0.4.24;
 pragma experimental ABIEncoderV2;
 
 import "./SnowflakeResolver.sol";
+import "./stringSet.sol";
 
 
 interface Snowflake {
-    function whitelistResolver(address resolver) external;
+    //function whitelistResolver(address resolver) external;
     function withdrawSnowflakeBalanceFrom(string hydroIdFrom, address to, uint amount) external;
     function getHydroId(address _address) external returns (string hydroId);
 }
 
 contract PetOwner is SnowflakeResolver {
     
-
+    using stringSet for stringSet._stringSet;
     //Pet fields
     struct Pet {
         //PetChoices choice; //tipo de animal
@@ -24,35 +25,50 @@ contract PetOwner is SnowflakeResolver {
         uint timestamp; //puede crease con valor now, fecha de registro
     }
 
+    stringSet._stringSet internal members;
     //para contener la mascota de cada hydroID
     mapping (string => Pet)  pets; //
+	Snowflake public _snowflake;
 
     uint signUpFee = 1000000000000000000;
 
-    constructor (address snowflakeAddress) public {
-        snowflakeName = "Pet Owner - get FriendOfPets membership";
+    constructor () public {
+        snowflakeAddress = 0x8b8b004abf1ee64e23d6088b73873898d8408a6d; //rinkeby address of snowflake contract
+		snowflakeName = "Pet Owner - get FriendOfPets membership";
         snowflakeDescription = "Registry your Pet to be a fully qualified Friend of Pets!";
-		setSnowflakeAddress(snowflakeAddress);
+		//setSnowflakeAddress(snowflakeAddress);
 
-        callOnSignUp = true;
-		Snowflake snowflake = Snowflake(snowflakeAddress);
-        snowflake.whitelistResolver(address(this));
+        //callOnSignUp = true;
+		//_snowflake = Snowflake(snowflakeAddress);
+        //snowflake.whitelistResolver(address(this));
+        
     }
 
     // implement signup function
-    function onSignUp(string hydroId, uint allowance) public senderIsSnowflake()  returns (bool) {
-        require(allowance >= signUpFee, "Must set an allowance of at least 1 HYDRO.");
-        Snowflake snowflake = Snowflake(snowflakeAddress);
-        snowflake.withdrawSnowflakeBalanceFrom(hydroId, owner, signUpFee);
-        
-		//3. update the data
-			pets[hydroId].petIdentification = "petId";
-			pets[hydroId].petType = "type of pet";
-			pets[hydroId].name="my pet name";
-			pets[hydroId].desc="pet description";
-			//pets[hydroId].timestamp = now;
-			emit PetUpdated(hydroId,pets[hydroId]);
-			
+    //function onSignUp(string hydroId, uint allowance) public senderIsSnowflake()  returns (bool) {
+    //    require(allowance >= signUpFee, "Must set an allowance of at least 1 HYDRO.");
+    //    //Snowflake snowflake = Snowflake(snowflakeAddress);
+    //    _snowflake.withdrawSnowflakeBalanceFrom(hydroId, owner, signUpFee);
+    //    
+	//	//3. update the data
+	//		pets[hydroId].petIdentification = "petId";
+	//		pets[hydroId].petType = "type of pet";
+	//		pets[hydroId].name="my pet name";
+	//		pets[hydroId].desc="pet description";
+	//		//pets[hydroId].timestamp = now;
+	//		emit PetUpdated(hydroId,pets[hydroId]);
+	//		
+    //    return true;
+    //}
+    
+     // implement signup function
+    function onSignUp(string hydroId, uint allowance) public returns (bool) {
+        require(msg.sender == snowflakeAddress, "Did not originate from Snowflake.");
+
+        if (members.contains(hydroId)) {
+            return false;
+        }
+        members.insert(hydroId);
         return true;
     }
 
@@ -64,8 +80,8 @@ contract PetOwner is SnowflakeResolver {
 
     function setPet(string petType, string name, string desc, string petIdentification) public returns (bool success)  {
 
-        Snowflake snowflake = Snowflake(snowflakeAddress);
-        string memory hydroId = snowflake.getHydroId(msg.sender);
+        //Snowflake snowflake = Snowflake(snowflakeAddress);
+        string memory hydroId = _snowflake.getHydroId(msg.sender);
 
 		//1. verify all required fields
 		//2. verify   petIdentification not repeated
