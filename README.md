@@ -32,3 +32,9 @@ Use Case 6: See reports of my interest:
   - reported to any of my pets (petId coincidence)
 
 From this, we can make much more functionality, but this is only a PoC, and thats ok!.
+
+Can include a use case:
+- pet owner put a reward (in hydro) in case of found lost pet.
+- somebody founds the pet and claims the reward.
+- after the resolution, pet owner pays the reward, and close incidence.
+
