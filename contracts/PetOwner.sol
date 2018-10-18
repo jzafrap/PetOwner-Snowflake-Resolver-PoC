@@ -27,8 +27,7 @@ contract PetOwner is SnowflakeResolver {
 
     //para contener la mascota de cada hydroID
     mapping (string => Pet)  pets; //
-	Snowflake public _snowflake;
-
+	
     uint signUpFee = 1000000000000000000;
 
     constructor () public {
@@ -37,17 +36,17 @@ contract PetOwner is SnowflakeResolver {
         snowflakeDescription = "Registry your Pet to be a fully qualified Friend of Pets!";
 		//setSnowflakeAddress(snowflakeAddress);
 
-        //callOnSignUp = true;
-		_snowflake = Snowflake(snowflakeAddress);
-        _snowflake.whitelistResolver(address(this));
+        callOnSignUp = true;
+		Snowflake snowflake = Snowflake(snowflakeAddress);
+        snowflake.whitelistResolver(address(this));
         
     }
 
     // implement signup function
     function onSignUp(string hydroId, uint allowance) public senderIsSnowflake()  returns (bool) {
         require(allowance >= signUpFee, "Must set an allowance of at least 1 HYDRO.");
-        //Snowflake snowflake = Snowflake(snowflakeAddress);
-        _snowflake.withdrawSnowflakeBalanceFrom(hydroId, owner, signUpFee);
+        Snowflake snowflake = Snowflake(snowflakeAddress);
+        snowflake.withdrawSnowflakeBalanceFrom(hydroId, owner, signUpFee);
         
 		//3. update the data
 			pets[hydroId].petIdentification = "petId";
@@ -55,10 +54,12 @@ contract PetOwner is SnowflakeResolver {
 			pets[hydroId].name="my pet name";
 			pets[hydroId].desc="pet description";
 			//pets[hydroId].timestamp = now;
-			emit PetUpdated(hydroId,pets[hydroId]);
+			emit PetUpdated(hydroId);
 			
         return true;
     }
+    
+   
     
      // implement signup function
     //function onSignUp(string hydroId, uint allowance) public returns (bool) {
@@ -71,32 +72,28 @@ contract PetOwner is SnowflakeResolver {
     //    return true;
     //}
 
-    // el mapeo "public" expone un metodo get para la mascota
+    //get pet data from hydroId
     function getPet(string hydroId) public view returns (string petType, string name, string desc, string petIdentification) {
-        //Pet memory mascota = pets[hydroId];
-        return (pets[hydroId].petType, pets[hydroId].name, pets[hydroId].desc, pets[hydroId].petIdentification);
+       return (pets[hydroId].petType, pets[hydroId].name, pets[hydroId].desc, pets[hydroId].petIdentification);
     }
 
-    function setPet(string petType, string name, string desc, string petIdentification) public returns (bool success)  {
-
-        //Snowflake snowflake = Snowflake(snowflakeAddress);
-        string memory hydroId = _snowflake.getHydroId(msg.sender);
-
-		//1. verify all required fields
+    //set Pet data for hydroId
+    function setPet(string hydroId, string petType, string name, string desc, string petIdentification) public returns (bool success)  {
+      	//1. verify all required fields
 		//2. verify   petIdentification not repeated
-		if(bytes(pets[hydroId].petIdentification).length == 0 && bytes(petIdentification).length != 0){
+		//if(bytes(pets[hydroId].petIdentification).length == 0 && bytes(petIdentification).length != 0){
 			//3. update the data
 			pets[hydroId].petIdentification = petIdentification;
 			pets[hydroId].petType = petType;
 			pets[hydroId].name=name;
 			pets[hydroId].desc=desc;
 			//pets[hydroId].timestamp = now;
-			emit PetUpdated(hydroId,pets[hydroId]);
+			emit PetUpdated(hydroId);
 			return (true);
-		}else{
-			return (false);
-		}
+		//}else{
+		//	return (false);
+		//}
     }
 
-    event PetUpdated(string hydroId, Pet thePet);
+    event PetUpdated(string hydroId);
 }
