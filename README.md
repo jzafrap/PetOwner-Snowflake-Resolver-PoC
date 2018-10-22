@@ -38,3 +38,5 @@ Can include a use case:
 - somebody founds the pet and claims the reward.
 - after the resolution, pet owner pays the reward, and close incidence.
 
+22.10.2018 notes
+By the moment, pet owner can only have one pet (one pet for every petowner), this can
