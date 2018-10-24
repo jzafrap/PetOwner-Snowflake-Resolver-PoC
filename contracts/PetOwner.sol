@@ -23,8 +23,8 @@ contract PetOwner is SnowflakeResolver {
         //PetChoices choice; //tipo de animal
         
         string contactName;
-        string contactMobilePhone;
-        string contactEmail;
+        //string contactMobilePhone; unsecure!!
+        string contactData; //only public data like email,twitter,telegram,facebook...
         string petType;
         string name;
         string desc;
@@ -38,7 +38,7 @@ contract PetOwner is SnowflakeResolver {
 	
     uint signUpFee = 1000000000000000000;
 
-    enum Status { Pending, Found, Removed, Rewarded}
+    enum Status {None, Pending, Found, Removed, Rewarded}
     
      
     struct LostReport{
@@ -48,8 +48,8 @@ contract PetOwner is SnowflakeResolver {
         string sceneDesc;
         Status status;
         uint reward;
-        string notesOnClaim;
-        string notesOnClose;
+        //string notesOnClaim;
+        //string notesOnClose;
         string claimedHydroId;
         uint reportClaimDate;
         uint reportClosedDate;
@@ -64,8 +64,29 @@ contract PetOwner is SnowflakeResolver {
         return lostReportsKeys.members;
     }
     
-    function getLostReport(string key)  public view returns(LostReport){
-        return lostReports[key];
+    function getLostReport(string key)  public view returns(
+        uint startDate,
+        string sceneDesc,
+        Status status,
+        uint reward,
+        //string notesOnClaim,
+        //string notesOnClose,
+        string claimedHydroId,
+        uint reportClaimDate,
+        uint reportClosedDate
+        
+        ){
+        return (
+            lostReports[key].reportStartDate,
+            lostReports[key].sceneDesc,
+            lostReports[key].status,
+            lostReports[key].reward,
+            //lostReports[key].notesOnClaim,
+            //lostReports[key].notesOnClose,
+            lostReports[key].claimedHydroId,
+            lostReports[key].reportClaimDate,
+            lostReports[key].reportClosedDate
+        );
     }
     
     function getCountRegsLostReport(string key) public view returns(uint){
@@ -81,24 +102,28 @@ contract PetOwner is SnowflakeResolver {
         //1. report dont exists
         require(bytes(lostReports[hydroId].sceneDesc).length==0,"Lost Report already exists.");
         //2. create new struct, assign to storate mapping
-        LostReport storage newReport;
-        newReport.reportStartDate = now;
-        newReport.sceneDesc = sceneDesc;
-        newReport.reward = reward;
-        newReport.status = Status.Pending;
+        //LostReport storage newReport;
+        //newReport.reportStartDate = now;
+        //newReport.sceneDesc = sceneDesc;
+        //newReport.reward = reward;
+        //newReport.status = Status.Pending;
         //persist on storage
-        lostReports[hydroId] = newReport;
+        lostReports[hydroId].reportStartDate = now;
+        lostReports[hydroId].sceneDesc = sceneDesc;
+        lostReports[hydroId].reward = reward;
+        lostReports[hydroId].status = Status.Pending;
+         
         lostReportsKeys.insert(hydroId);
         emit LostReportChanged(lostReports[hydroId]);
         return true;
     }
  
-    function removeLostReportByOwner(string hydroId,string notesOnClose) public returns (bool){
+    function removeLostReportByOwner(string hydroId /*, string notesOnClose*/) public returns (bool){
         require(bytes(lostReports[hydroId].sceneDesc).length > 0,"Active LostReport doesn't exists");
         lostReports[hydroId].status = Status.Removed;
         lostReports[hydroId].claimedHydroId = hydroId;
         lostReports[hydroId].reportClosedDate = now;
-        lostReports[hydroId].notesOnClose = notesOnClose;
+        //lostReports[hydroId].notesOnClose = notesOnClose;
         //pass LostReport to historic
         toHistoric(hydroId);
         //delete all struct elements for hydroId
@@ -110,7 +135,7 @@ contract PetOwner is SnowflakeResolver {
         return true;
     }
     
-    function claimLostReport(string hydroId, string claimerHydroId, string notesOnClaim) public returns (bool){
+    function claimLostReport(string hydroId, string claimerHydroId /*,string notesOnClaim*/) public returns (bool){
        //require(hydroId != claimerHydroId, "Claimer can't be the pet owner, use removeLostReportByOwner instead.");
         require(bytes(lostReports[hydroId].sceneDesc).length > 0,"Lost Report doesn't exist");
         require(lostReports[hydroId].status == Status.Pending, "Lost Report is not pending");
@@ -119,12 +144,12 @@ contract PetOwner is SnowflakeResolver {
         lostReports[hydroId].claimedHydroId =claimerHydroId;
         lostReports[hydroId].status =Status.Found;
         lostReports[hydroId].reportClaimDate = now;
-        lostReports[hydroId].notesOnClaim = notesOnClaim;
+        //lostReports[hydroId].notesOnClaim = notesOnClaim;
         emit LostReportChanged(lostReports[hydroId]);
         return true;
     }
     
-    function confirmReward(string hydroOwnerId, string notesOnClose) public returns (bool){
+    function confirmReward(string hydroOwnerId/*, string notesOnClose*/) public returns (bool){
         require(bytes(lostReports[hydroOwnerId].sceneDesc).length > 0,"LosReport doesn't exists");
         require(lostReports[hydroOwnerId].status == Status.Found, "The state of Lost Report is not found!");
         
@@ -136,7 +161,7 @@ contract PetOwner is SnowflakeResolver {
         //change state to Closed
         lostReports[hydroOwnerId].status = Status.Rewarded;
         lostReports[hydroOwnerId].reportClosedDate = now;
-        lostReports[hydroOwnerId].notesOnClose = notesOnClose;
+        //lostReports[hydroOwnerId].notesOnClose = notesOnClose;
         //pass LostReport to historic
         toHistoric(hydroOwnerId);
         //delete all struct elements for hydroOwnerId
@@ -185,8 +210,8 @@ contract PetOwner is SnowflakeResolver {
 			pets[hydroId].desc="pet description";
 			//pets[hydroId].timestamp = now;
 			pets[hydroId].contactName = "owner's name";
-			pets[hydroId].contactMobilePhone = "owner's phone";
-			pets[hydroId].contactEmail = "owner's email";
+			//pets[hydroId].contactMobilePhone = "owner's phone";
+			pets[hydroId].contactData = "owner's public contact data";
 			emit PetUpdated(hydroId);
 			
         return true;
@@ -196,14 +221,14 @@ contract PetOwner is SnowflakeResolver {
     
      //get pet data from hydroId
     function getPet(string hydroId) public view returns (string petType, string name, string desc, string petIdentification,
-        string contactName, string contactMobilephone, string contactEmail) {
+        string contactName, string contactData) {
        return (pets[hydroId].petType, pets[hydroId].name, pets[hydroId].desc, pets[hydroId].petIdentification,
-       	pets[hydroId].contactName,	pets[hydroId].contactMobilePhone, 	pets[hydroId].contactEmail );
+       	pets[hydroId].contactName,	pets[hydroId].contactData );
     }
 
     //set Pet data for hydroId
     function setPet(string hydroId, string petType, string name, string desc, string petIdentification,
-    string contactName, string contactMobilephone, string contactEmail) public returns (bool success)  {
+    string contactName, string contactData) public returns (bool success)  {
       	//1. verify all required fields
 		//2. verify   petIdentification not repeated
 		//if(bytes(pets[hydroId].petIdentification).length == 0 && bytes(petIdentification).length != 0){
@@ -214,8 +239,8 @@ contract PetOwner is SnowflakeResolver {
 			pets[hydroId].desc=desc;
 			//pets[hydroId].timestamp = now;
 			pets[hydroId].contactName = contactName;
-			pets[hydroId].contactMobilePhone = contactMobilephone;
-			pets[hydroId].contactEmail = contactEmail;
+			//pets[hydroId].contactMobilePhone = contactMobilephone;
+			pets[hydroId].contactData = contactData;
 			emit PetUpdated(hydroId);
 			return (true);
 		//}else{
