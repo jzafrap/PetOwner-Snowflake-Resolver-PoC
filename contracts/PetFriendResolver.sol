@@ -15,11 +15,25 @@ interface Snowflake {
 }
 
 contract PetFriendResolver is SnowflakeResolver {
+    //Revision history
+    //v0.3:
+    //   -add method unclaimLostReport => changes report status from Found to Pending
+    //   -remove PetChanged event 
+    //   -add modifier _lostReportActive  
+    //   -add getOwner method
+    //v0.4:
+    //   -add method updateOwner => updates owners data
+    //v0.5:
+    //   -add method getPetOwner(string petId)
+     //v0.51
+    //   -add ownerId to getPetOwner(string petId)
+    //v0.52 private modifier to all state vars, to disable public methods on compile
+    
     
     using stringSet for stringSet._stringSet;
-     using SafeMath for uint;
+    using SafeMath for uint;
     
-    //OwnerFields
+    //Owner Fields
     struct Owner{
         string snowflakeId; //PK
         string contactName;
@@ -27,57 +41,50 @@ contract PetFriendResolver is SnowflakeResolver {
         string[] petIds;
     }
 
-   //owners registry by snowflakeId
-    mapping (string => Owner) owners;
-    
+ 
     //Pet fields
     struct Pet {
-        string petIdentification; //PK
+        string ownerId;
+        string petId; //PK
         string petType;
-        string breed;
         string name;
         string desc;
         string imgUrl;
     }
     
-     
-    //pets registry by petIdentification(PK)
-    mapping (string => Pet)  pets; //
-    
+   //Pet Reports
     struct LostReport{
-        string petIdentification; //PK
+        string petId; //PK
         Status status;
         string sceneDesc;
-        string location;
         uint reward;
         string claimerHydroId;
     }
 
- 
+    //one hydro is represented as 1000000000000000000
     uint signUpFee = uint(1).mul(10**18);
 
     enum Status {None, Pending, Found, Removed, Rewarded}
     
-    //lost report of a petIdentification
+     //pets registry by petId(PK)
+    mapping (string => Pet)  private pets; //
+    
+    //owners registry by snowflakeId
+    mapping (string => Owner) private owners;
+    
+    //lost report of a petId
     mapping (string => LostReport) private lostReports; 
     
-    //all active lost report keys
-    stringSet._stringSet internal lostReportsKeys;
+    //all active lost report keys; used to list in frontend
+    stringSet._stringSet private  lostReportKeys;
      
      //Events
-     
-    //when pet data changes
-    event PetUpdated(
-        string hydroId,
-        uint date,
-        Pet pet
-    );
-    
+  
     
     //when lost report changes: reports, modifies, claimed, closed...
     //to be used to list an historic of pet incidences
     event LostReportChanged(
-        string petIdentification, 
+        string indexed petId, 
         uint date,
         LostReport lostReport
     );
@@ -92,11 +99,23 @@ contract PetFriendResolver is SnowflakeResolver {
          _;
      }
      
-     
+     modifier _lostReportActive(string petId)
+     {
+        //require(bytes(pets[petId].desc).length >0,"No pet exists with that petId");
+        require(lostReportKeys.contains(petId));
+        _;
+     }
+    
+    modifier _uniquePetId(string petId){
+        //require(pets[petId].length==0);
+         require(bytes(pets[petId].petId).length ==0,"No pet exists with that petId");
+        _;
+    } 
+    
     constructor () public {
         snowflakeAddress = 0x8b8B004aBF1eE64e23D6088B73873898d8408A6d; //rinkeby address of snowflake contract
-		snowflakeName = "Pet Owner - get FriendOfPets membership";
-        snowflakeDescription = "Registry your Pet to be a fully qualified Friend of Pets!";
+		snowflakeName = "Pet Owner Resolver v0.5 - get your Pet Friend membership";
+        snowflakeDescription = "Become a member of Pet Friends community and register your pets!";
 		//setSnowflakeAddress(snowflakeAddress);
 
         callOnSignUp = true;
@@ -106,75 +125,99 @@ contract PetFriendResolver is SnowflakeResolver {
     }
 
     // implement signup function
-    function onSignUp(string hydroId, uint allowance) public senderIsSnowflake()  returns (bool) {
+    function onSignUp(string hydroId, uint allowance) 
+        public 
+        senderIsSnowflake()  
+        returns (bool) 
+        {
         require(allowance >= signUpFee, "Must set an allowance of at least 1 HYDRO.");
         Snowflake snowflake = Snowflake(snowflakeAddress);
         snowflake.withdrawSnowflakeBalanceFrom(hydroId, owner, signUpFee);
         
 		//3. update the mapping owners
-		owners[hydroId].contactName = "Please update with owner's name";
-		owners[hydroId].contactData = "Please update with owner's public contact info";
+		owners[hydroId].contactName = "Set owner's name";
+		owners[hydroId].contactData = "Set owner's public contact info";
 
         return true;
     }
+    
+    function getOwner(string hydroId)public view returns (string contactName, string contactData ){
+        return( owners[hydroId].contactName,
+                owners[hydroId].contactData)  ;  
+    }
+    
+    function getPetOwner(string petId)  public view returns (string ownerId,string contactName, string contactData ){
+        return(
+            pets[petId].ownerId,
+            owners[pets[petId].ownerId].contactName,
+            owners[pets[petId].ownerId].contactData);
+        
+    }
+    
+    function updateOwner(string hydroId, string contactName, string contactData) 
+        public
+        _onlyOwner(hydroId)
+        returns (bool success)
+        {
+            owners[hydroId].contactName = contactName;
+            owners[hydroId].contactData = contactData;  
+            return(true);
+    }
+    
     
     function getOwnerPets(string ownerId) public view returns(string[]){
         return owners[ownerId].petIds;    
     }
     
       
-     //get pet data from petIdentification
-    function getPet(string petIdentification) public view returns (string petType, string breed, string name, string desc, string imgUrl) 
+     //get pet data from petId
+    function getPet(string petId) public view returns (string petType, string name, string desc, string imgUrl) 
     {
        return( 
-            pets[petIdentification].petType, 
-            pets[petIdentification].breed, 
-            pets[petIdentification].name, 
-            pets[petIdentification].desc, 
-            pets[petIdentification].imgUrl
+            pets[petId].petType, 
+            pets[petId].name, 
+            pets[petId].desc, 
+            pets[petId].imgUrl
        	);
     }
 
     //The owner creates a new pet
-    function addPet(string ownerId, string petIdentification, string petType,  string breed, string name, string desc, string imgUrl) public _onlyOwner(ownerId) returns (bool success)  
+    function addPet(string ownerId, string petId, string petType, string name, string desc, string imgUrl) 
+        public 
+        _onlyOwner(ownerId) //0. sender must be ownerId 
+        _uniquePetId(petId) //2. verify   petId not repeated
+        returns (bool success)  
     {
-        //0. sender must be ownerId
       	//1. verify all required fields
-		//2. verify   petIdentification not repeated
-		 require(bytes(pets[petIdentification].desc).length == 0,"A pet already registered with this petIdentification");
-		
+		 //require(bytes(pets[petId].desc).length == 0,"A pet already registered with this petId");
 		//3. update the data
 		
-		pets[petIdentification].petIdentification =petIdentification;
-		pets[petIdentification].petType = petType;
-		pets[petIdentification].breed=breed;
-		pets[petIdentification].name=name;
-		pets[petIdentification].desc=desc;
-		pets[petIdentification].imgUrl=imgUrl;
+		pets[petId].petId =petId;
+		pets[petId].petType = petType;
+	    pets[petId].name=name;
+		pets[petId].desc=desc;
+		pets[petId].imgUrl=imgUrl;
+		pets[petId].ownerId = ownerId;
 		
 		//4. register pet ownership
-		owners[ownerId].petIds.push(petIdentification);
-		
-		emit PetUpdated(petIdentification,now,pets[petIdentification]);
+		owners[ownerId].petIds.push(petId);
+
 		return (true);
     }
     
-     function updatePet(string ownerId, string petIdentification, string petType,  string breed, string name, string desc, string imgUrl) public _onlyOwner(ownerId) returns (bool success)  
+     function updatePet(string ownerId, string petId, string petType,  string name, string desc, string imgUrl) public _onlyOwner(ownerId) returns (bool success)  
     {
         //0. sender must be ownerId
       	//1. verify all required fields
-		//2. verify   petIdentification already exists
-			 require(bytes(pets[petIdentification].desc).length >0,"No pet exists with that petId");
+		//2. verify   petId already exists
+			 require(bytes(pets[petId].desc).length >0,"No pet exists with that petId");
 		//3. update the data
-			//pets[hydroId].petIdentification = petIdentification;
-			pets[petIdentification].petType = petType;
-			pets[petIdentification].breed=breed;
-			pets[petIdentification].name=name;
-			pets[petIdentification].desc=desc;
-			pets[petIdentification].imgUrl=imgUrl;
+			//pets[hydroId].petId = petId;
+			pets[petId].petType = petType;
+			pets[petId].name=name;
+			pets[petId].desc=desc;
+			pets[petId].imgUrl=imgUrl;
 		
-		
-			emit PetUpdated(petIdentification,now,pets[petIdentification]);
 			return (true);
 		//}else{
 		//	return (false);
@@ -184,125 +227,131 @@ contract PetFriendResolver is SnowflakeResolver {
 
     //Returning key array is possible to query by key element
     function getAllLostReportKeys() public view returns(string[]){
-        return lostReportsKeys.members;
+        return lostReportKeys.members;
     }
     
-    function getLostReport(string petIdentificacion)  public view returns(
+    function getLostReport(string petId)  public view returns(
         Status status,
         string sceneDesc,
-        string location,
         uint reward,
         string claimerHydroId
         ){
         return (
-            lostReports[petIdentificacion].status,
-            lostReports[petIdentificacion].sceneDesc,
-            lostReports[petIdentificacion].location,
-            lostReports[petIdentificacion].reward,
-            lostReports[petIdentificacion].claimerHydroId
+            lostReports[petId].status,
+            lostReports[petId].sceneDesc,
+            lostReports[petId].reward,
+            lostReports[petId].claimerHydroId
         );
     }
+    
+    
 
     //new LostReport
-    function putLostReport(string ownerId, string petIdentification, string sceneDesc, string location, uint reward ) public _onlyOwner(ownerId) returns (bool){
+    function putLostReport(string ownerId, string petId, string sceneDesc, uint reward ) public _onlyOwner(ownerId) returns (bool){
         //1. report dont exists
-        require(bytes(lostReports[petIdentification].sceneDesc).length==0,"Lost Report already exists.");
+        require(bytes(lostReports[petId].sceneDesc).length==0,"Lost Report already exists.");
         //2. create new struct, assign to storate mapping
         //persist on storage
-        lostReports[petIdentification].sceneDesc = sceneDesc;
-        lostReports[petIdentification].location = location;
-        lostReports[petIdentification].reward = reward;
-        lostReports[petIdentification].status = Status.Pending;
+        lostReports[petId].sceneDesc = sceneDesc;
+        lostReports[petId].reward = reward;
+        lostReports[petId].status = Status.Pending;
 
-        lostReportsKeys.insert(petIdentification); //can exists?
-        emit LostReportChanged(petIdentification,now, lostReports[petIdentification]);
+        lostReportKeys.insert(petId); //can exists?
+        emit LostReportChanged(petId,now, lostReports[petId]);
         return true;
     }
     
     
     //new LostReport
-    function updateLostReport(string ownerId, string petIdentification, string sceneDesc, string location, uint reward ) public _onlyOwner(ownerId) returns (bool){
+    function updateLostReport(string ownerId, string petId, string sceneDesc, uint reward ) public _onlyOwner(ownerId) returns (bool){
         //1. report dont exists
-        require(bytes(lostReports[petIdentification].sceneDesc).length>0,"Lost Report don't exists.");
+        require(bytes(lostReports[petId].sceneDesc).length>0,"Lost Report don't exists.");
         //2. create new struct, assign to storate mapping
         //persist on storage
-        lostReports[petIdentification].sceneDesc = sceneDesc;
-        lostReports[petIdentification].location = location;
-        lostReports[petIdentification].reward = reward;
-        lostReports[petIdentification].status = Status.Pending;
+        lostReports[petId].sceneDesc = sceneDesc;
+        lostReports[petId].reward = reward;
+        lostReports[petId].status = Status.Pending;
          
-        lostReportsKeys.insert(petIdentification); //can exists?
-        emit LostReportChanged(petIdentification,now, lostReports[petIdentification]);
+        lostReportKeys.insert(petId); //can exists?
+        emit LostReportChanged(petId,now, lostReports[petId]);
         return true;
     }
  
-    function removeLostReport(string ownerId, string petIdentification) public _onlyOwner(ownerId) returns (bool){
+    //owner can remove a lost report, when he finds the pen again, for example, o is found dead, etc.
+    function removeLostReport(string ownerId, string petId) public _onlyOwner(ownerId) returns (bool){
+        //petId must have a report
+        require(bytes(lostReports[petId].sceneDesc).length > 0,"Active LostReport doesn't exists");
+        lostReports[petId].status = Status.Removed;
        
-         
-        //petIdentification must have a report
-        require(bytes(lostReports[petIdentification].sceneDesc).length > 0,"Active LostReport doesn't exists");
-        lostReports[petIdentification].status = Status.Removed;
        
-       
-         emit LostReportChanged(petIdentification, now,lostReports[petIdentification]);
+         emit LostReportChanged(petId, now,lostReports[petId]);
         //delete all struct elements for hydroId
-        delete lostReports[petIdentification];
+        delete lostReports[petId];
         //delete key
-        lostReportsKeys.remove(petIdentification);
+        lostReportKeys.remove(petId);
         
        
         return true;
     }
     
-    function claimLostReport(string petIdentification, string claimerHydroId /*,string notesOnClaim*/) public returns (bool){
+    //somebody claims the pet found
+    function claimLostReport(string petId, string claimerHydroId /*,string notesOnClaim*/) public returns (bool){
        //require(hydroId != claimerHydroId, "Claimer can't be the pet owner, use removeLostReportByOwner instead.");
-        require(bytes(lostReports[petIdentification].sceneDesc).length > 0,"Lost Report doesn't exist");
-        require(lostReports[petIdentification].status == Status.Pending, "Lost Report is not pending");
-       
+        require(bytes(lostReports[petId].sceneDesc).length > 0,"Lost Report doesn't exist");
+        require(lostReports[petId].status == Status.Pending, "Lost Report is not pending");
         //change status and snowflakeDescription
-        lostReports[petIdentification].claimerHydroId =claimerHydroId;
-        lostReports[petIdentification].status =Status.Found;
+        lostReports[petId].claimerHydroId =claimerHydroId;
+        lostReports[petId].status =Status.Found;
        
         //lostReports[hydroId].notesOnClaim = notesOnClaim;
-        emit LostReportChanged(petIdentification,now,lostReports[petIdentification]);
+        emit LostReportChanged(petId,now,lostReports[petId]);
         return true;
     }
     
-    function confirmReward(string ownerId, string petIdentification) public _onlyOwner(ownerId) returns (bool){
+    //unclaim previos claimed report: only can unclaim the owner or the claimer    
+    function unclaimLostReport(string petId) public returns (bool){
+        require(bytes(lostReports[petId].sceneDesc).length > 0,"Lost Report doesn't exist");
+        require(lostReports[petId].status == Status.Found, "Lost Report is not claimed");
+       
+        //change status and snowflakeDescription
+        lostReports[petId].claimerHydroId ='';
+        lostReports[petId].status =Status.Pending;
+       
+        //lostReports[hydroId].notesOnClaim = notesOnClaim;
+        emit LostReportChanged(petId,now,lostReports[petId]);
+        return true;
+    }
+    
+    function confirmReward(string ownerId, string petId) public _onlyOwner(ownerId) returns (bool){
         //sender must be pet owner
         
         //report must exists
-        require(bytes(lostReports[petIdentification].sceneDesc).length > 0,"LosReport doesn't exists");
+        require(bytes(lostReports[petId].sceneDesc).length > 0,"LosReport doesn't exists");
         //report status must be found
-        require(lostReports[petIdentification].status == Status.Found, "The state of Lost Report is not found!");
+        require(lostReports[petId].status == Status.Found, "The state of Lost Report is not found!");
         
         Snowflake snowflake = Snowflake(snowflakeAddress);
-        require(snowflake.snowflakeBalance(ownerId) >= lostReports[petIdentification].reward.mul(10**18));
+        require(snowflake.snowflakeBalance(ownerId) >= lostReports[petId].reward.mul(10**18));
         
-        string memory claimerHydroId = lostReports[petIdentification].claimerHydroId;
-        uint  reward = lostReports[petIdentification].reward;
+        string memory claimerHydroId = lostReports[petId].claimerHydroId;
+        uint  reward = lostReports[petId].reward;
         //change state to Closed
-        lostReports[petIdentification].status = Status.Rewarded;
+        lostReports[petId].status = Status.Rewarded;
        
        
         //LostReportChanged event
-        emit LostReportChanged(petIdentification, now,lostReports[petIdentification]);
+        emit LostReportChanged(petId, now,lostReports[petId]);
          
          //delete all struct elements for hydroOwnerId
-        delete lostReports[petIdentification];
+        delete lostReports[petId];
         //delete key
-        lostReportsKeys.remove(petIdentification);
+        lostReportKeys.remove(petId);
         
         //as a good pattern, always call other contracts the last thing
         //make the transfer
         snowflake.transferSnowflakeBalanceFrom(ownerId,  claimerHydroId, reward.mul(10**18));
         return true;
     }
-    
-
-    
 
 
-  
-    
 }
