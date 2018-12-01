@@ -28,6 +28,8 @@ contract PetFriendResolver is SnowflakeResolver {
      //v0.51
     //   -add ownerId to getPetOwner(string petId)
     //v0.52 private modifier to all state vars, to disable public methods on compile
+    //v0.53 
+    //   -canUnclaim modifier for unclaim verify
     
     
     using stringSet for stringSet._stringSet;
@@ -112,6 +114,19 @@ contract PetFriendResolver is SnowflakeResolver {
         _;
     } 
     
+     modifier _canUnclaim(string petId)
+     {   
+         Snowflake snowflake = Snowflake(snowflakeAddress);
+         string memory senderSnowflake = snowflake.getHydroId(msg.sender);
+         //require(senderSnowflake == ownerId);
+         require(
+             (keccak256(senderSnowflake) == keccak256(pets[petId].ownerId))
+             || 
+             (keccak256(senderSnowflake) == keccak256(lostReports[petId].claimerHydroId))
+             ,"unclaimer must be owner or claimer");
+         _;
+     }
+     
     constructor () public {
         snowflakeAddress = 0x8b8B004aBF1eE64e23D6088B73873898d8408A6d; //rinkeby address of snowflake contract
 		snowflakeName = "Pet Owner Resolver v0.5 - get your Pet Friend membership";
@@ -308,8 +323,8 @@ contract PetFriendResolver is SnowflakeResolver {
         return true;
     }
     
-    //unclaim previos claimed report: only can unclaim the owner or the claimer    
-    function unclaimLostReport(string petId) public returns (bool){
+    //unclaim previos claimed report: only can unclaim the owner or the claimer or pet owner   
+    function unclaimLostReport(string petId) public _canUnclaim (petId) returns (bool){
         require(bytes(lostReports[petId].sceneDesc).length > 0,"Lost Report doesn't exist");
         require(lostReports[petId].status == Status.Found, "Lost Report is not claimed");
        
